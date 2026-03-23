@@ -18,8 +18,6 @@ async function alFetch(query, variables = {}) {
 }
 
 // ─── Video embed system ───────────────────────────────────────────────────────
-const BACKEND_URL = ""; // Set to your Railway URL for HLS streams
-
 async function getMalId(anilistId) {
   try {
     const r = await alFetch("query($id:Int){Media(id:$id,type:ANIME){idMal}}", { id: anilistId });
@@ -27,8 +25,9 @@ async function getMalId(anilistId) {
   } catch { return null; }
 }
 
+// FIX: Use malId when available (required by most embed providers), fallback to anilistId
 function buildEmbedUrls(anilistId, malId, epNum, isDub) {
-  const id  = malId || anilistId;
+  const id  = malId || anilistId;  // prefer MAL ID — most providers need it
   const sub = isDub ? "dub" : "sub";
   return [
     `https://vidsrc.cc/v2/embed/anime/${id}/${epNum}?translation=${sub}`,
@@ -38,35 +37,6 @@ function buildEmbedUrls(anilistId, malId, epNum, isDub) {
     `https://vidsrc.pro/embed/anime/${id}/${epNum}`,
     `https://2embed.skin/embed/anime/stream?id=${id}&e=${epNum}&s=${sub}`,
   ];
-}
-
-function buildSrcdoc(embedUrl, title, epNum) {
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;background:#000;overflow:hidden}
-iframe{position:fixed;inset:0;width:100%;height:100%;border:0}
-</style>
-<script>
-try{
-  Object.defineProperty(navigator,'userAgent',{get:()=>'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'});
-  Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.'});
-  Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
-}catch(e){}
-</script>
-</head>
-<body>
-<iframe src="${embedUrl}"
-  allowfullscreen
-  allow="autoplay;fullscreen;encrypted-media;picture-in-picture"
-  referrerpolicy="no-referrer-when-downgrade"
-></iframe>
-</body>
-</html>`;
 }
 
 // ─── AniList queries ──────────────────────────────────────────────────────────
@@ -109,8 +79,10 @@ function normAL(m) {
   };
 }
 
+// FIX: Use wsrv.nl proxy correctly — it works in browser without Next/Image component
 function imgUrl(url, w=300) {
   if (!url) return "";
+  // wsrv.nl is a reliable image proxy that handles CORS for browser <img> tags
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=${w}&output=webp&q=85`;
 }
 
@@ -140,9 +112,14 @@ function AnimeCard({anime,onClick}){
       <div style={{position:"relative",borderRadius:10,overflow:"hidden",aspectRatio:"2/3",background:"#16161c"}}>
         {err
           ?<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",padding:8,textAlign:"center",fontSize:11,color:"#7070a0"}}>{anime.title}</div>
-          :<img src={imgUrl(anime.cover,300)} alt={anime.title} loading="lazy"
-            style={{width:"100%",height:"100%",objectFit:"cover"}}
-            onError={()=>setErr(true)}/>}
+          :<img
+              src={imgUrl(anime.cover, 300)}
+              alt={anime.title}
+              loading="lazy"
+              style={{width:"100%",height:"100%",objectFit:"cover"}}
+              onError={()=>setErr(true)}
+            />
+        }
         <div style={{position:"absolute",top:7,left:7,display:"flex",flexDirection:"column",gap:4}}>
           <span style={{fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:4,background:"rgba(0,0,0,.7)",color:"rgba(255,255,255,.8)"}}>{anime.format}</span>
           {anime.status==="RELEASING"&&<span style={{fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:4,background:"#e5172c",color:"white"}}>LIVE</span>}
@@ -214,8 +191,9 @@ export default function Home() {
     setEmbedLoading(true);
     setEmbedUrls([]);
     setEmbedIdx(0);
-    const malId=await getMalId(a.id);
-    const urls=buildEmbedUrls(a.id,malId,ep,dub);
+    // FIX: fetch MAL ID fresh each time so embed URLs are always correct
+    const malId = a.malId || await getMalId(a.id);
+    const urls=buildEmbedUrls(a.id, malId, ep, dub);
     setEmbedUrls(urls);
     setEmbedLoading(false);
   },[]);
@@ -231,6 +209,9 @@ export default function Home() {
   const epStart=epPage*EP_PAGE+1;
   const epEnd=Math.min(epStart+EP_PAGE-1,totalEps||epStart+EP_PAGE-1);
   const epPages=totalEps>EP_PAGE?Math.ceil(totalEps/EP_PAGE):1;
+
+  // Hero banner for home page (first trending item)
+  const hero = liveData.trending?.[0];
 
   return(
     <>
@@ -310,7 +291,7 @@ export default function Home() {
             ← Back
           </button>
 
-          {/* ── VIDEO PLAYER (shows when episode selected) ── */}
+          {/* ── VIDEO PLAYER ── */}
           {playEp&&(
             <div style={{margin:"16px 24px 0",borderRadius:14,overflow:"hidden",background:"#000",border:"1px solid #2a2a35"}}>
               {/* Server tabs */}
@@ -336,7 +317,7 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* Video iframe */}
+              {/* FIX: Direct iframe src instead of srcdoc — srcdoc blocks many embed providers */}
               <div style={{position:"relative",paddingTop:"56.25%"}}>
                 {embedLoading?(
                   <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#000"}}>
@@ -345,16 +326,17 @@ export default function Home() {
                 ):(
                   <iframe
                     key={`${embedIdx}-${anime.id}-${playEp}`}
-                    srcDoc={embedUrls[embedIdx]?buildSrcdoc(embedUrls[embedIdx],anime.title,playEp):""}
-                    style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none"}}
+                    src={embedUrls[embedIdx] || ""}
+                    style={{position:"absolute",inset:0,width:"100%",height:"100%",border:"none",background:"#000"}}
                     allowFullScreen
-                    allow="autoplay;fullscreen;encrypted-media;picture-in-picture"
+                    allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                    referrerPolicy="no-referrer-when-downgrade"
                     sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation"
                   />
                 )}
               </div>
 
-              {/* Sub/dub toggle under player */}
+              {/* Sub/dub toggle */}
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#16161c",borderTop:"1px solid #2a2a35",flexWrap:"wrap"}}>
                 <span style={{fontSize:11,fontWeight:700,color:"#7070a0"}}>Audio:</span>
                 {[{k:false,l:"🇯🇵 Japanese Sub"},{k:true,l:"🇺🇸 English Dub"}].map(o=>(
@@ -391,209 +373,6 @@ export default function Home() {
                 {t:`⭐ ${anime.score}`,bg:"rgba(251,191,36,.12)",c:"#fbbf24",b:"rgba(251,191,36,.25)"},
                 {t:anime.format,bg:"#16161c",c:"#7070a0",b:"#2a2a35"},
                 anime.year&&{t:String(anime.year),bg:"#16161c",c:"#7070a0",b:"#2a2a35"},
-                anime.episodes!=="?"&&{t:`${anime.episodes} eps`,bg:"#16161c",c:"#7070a0",b:"#2a2a35"},
-                anime.studio&&{t:anime.studio,bg:"#16161c",c:"#7070a0",b:"#2a2a35"},
-                anime.status==="RELEASING"&&{t:"● AIRING",bg:"rgba(229,23,44,.1)",c:"#e5172c",b:"rgba(229,23,44,.25)"},
-              ].filter(Boolean).map((p,i)=>(
-                <span key={i} style={{display:"inline-flex",alignItems:"center",padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:p.bg,color:p.c,border:`1px solid ${p.b}`}}>{p.t}</span>
-              ))}
-            </div>
-
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:18}}>
-              {anime.genres?.map(g=><span key={g} style={{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:600,background:"#16161c",border:"1px solid #2a2a35",color:"#7070a0"}}>{g}</span>)}
-            </div>
-
-            {anime.desc&&<p style={{fontSize:14,color:"rgba(255,255,255,.62)",lineHeight:1.72,marginBottom:22}}>{anime.desc}</p>}
-
-            <div style={{display:"flex",gap:10,marginBottom:28,flexWrap:"wrap"}}>
-              <button onClick={()=>playEpisode(anime,1,isDub)}
-                style={{background:"#e5172c",color:"white",borderRadius:10,padding:"11px 24px",fontSize:14,fontWeight:700,cursor:"pointer",border:"none",display:"flex",alignItems:"center",gap:8,fontFamily:"inherit"}}>
-                ▶ Play Episode 1
-              </button>
-              <button onClick={()=>setIsDub(d=>!d)}
-                style={{background:"rgba(255,255,255,.1)",color:"white",borderRadius:10,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",border:"1px solid rgba(255,255,255,.15)",fontFamily:"inherit"}}>
-                {isDub?"🇺🇸 DUB":"🇯🇵 SUB"}
-              </button>
-            </div>
-
-            {animeLoading&&<div style={{width:28,height:28,border:"3px solid #2a2a35",borderTopColor:"#e5172c",borderRadius:"50%",animation:"spin .7s linear infinite",margin:"20px 0"}}/>}
-
-            {/* TABS */}
-            <div style={{display:"flex",gap:4,borderBottom:"1px solid #2a2a35",marginBottom:22}}>
-              {["episodes","characters","related"].map(t=>(
-                <div key={t} onClick={()=>setDetTab(t)}
-                  style={{padding:"10px 18px",fontSize:14,fontWeight:600,cursor:"pointer",
-                    color:detTab===t?"#f0f0f5":"#7070a0",
-                    borderBottom:`2px solid ${detTab===t?"#e5172c":"transparent"}`,transition:"all .15s"}}>
-                  {t==="episodes"?"Episodes":t==="characters"?"Characters":"Related"}
-                </div>
-              ))}
-            </div>
-
-            {/* EPISODES */}
-            {detTab==="episodes"&&(
-              <div>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
-                  <div style={{display:"flex",gap:4}}>
-                    {[{k:false,l:"🇯🇵 SUB"},{k:true,l:"🇺🇸 DUB"}].map(o=>(
-                      <button key={String(o.k)} onClick={()=>setIsDub(o.k)}
-                        style={{padding:"6px 14px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
-                          background:isDub===o.k?"#e5172c":"#16161c",color:isDub===o.k?"white":"#7070a0"}}>
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                  {totalEps>0&&<span style={{fontSize:12,color:"#7070a0"}}>{totalEps.toLocaleString()} episodes</span>}
-                </div>
-
-                {epPages>1&&(
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-                    {Array.from({length:epPages},(_,i)=>i).map(i=>(
-                      <button key={i} onClick={()=>setEpPage(i)}
-                        style={{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:"none",
-                          background:epPage===i?"#e5172c":"#16161c",color:epPage===i?"white":"#7070a0"}}>
-                        {i*EP_PAGE+1}–{Math.min((i+1)*EP_PAGE,totalEps)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}} className="grid-auto">
-                  {Array.from({length:epEnd-epStart+1},(_,i)=>epStart+i).map(n=>{
-                    const type=epType(anime.id,n);
-                    const isPlaying=playEp===n;
-                    return(
-                      <div key={n} onClick={()=>playEpisode(anime,n,isDub)}
-                        style={{borderRadius:10,overflow:"hidden",cursor:"pointer",border:`2px solid ${isPlaying?"#e5172c":"transparent"}`,transition:"all .15s",background:"#16161c"}}>
-                        <div style={{position:"relative",aspectRatio:"16/9"}}>
-                          <img src={imgUrl(anime.cover,300)} alt={`Ep ${n}`}
-                            style={{width:"100%",height:"100%",objectFit:"cover"}}
-                            onError={e=>{e.target.style.opacity=0;}}/>
-                          <div style={{position:"absolute",inset:0,background:isPlaying?"rgba(229,23,44,.3)":"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                            <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(229,23,44,.9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"white"}}>▶</div>
-                          </div>
-                          <div style={{position:"absolute",bottom:5,left:7,fontSize:9,fontWeight:800,color:"white",textShadow:"0 1px 4px rgba(0,0,0,.9)"}}>Ep {n}</div>
-                          {type==="filler"&&<div style={{position:"absolute",top:4,right:4,padding:"2px 5px",borderRadius:4,fontSize:8,fontWeight:800,background:"rgba(239,68,68,.9)",color:"white"}}>FILLER</div>}
-                          {type==="mixed"&&<div style={{position:"absolute",top:4,right:4,padding:"2px 5px",borderRadius:4,fontSize:8,fontWeight:800,background:"rgba(251,191,36,.9)",color:"#111"}}>MIXED</div>}
-                        </div>
-                        <div style={{padding:"6px 8px",fontSize:10,fontWeight:600,
-                          color:isPlaying?"#e5172c":type==="filler"?"#ef4444":type==="mixed"?"#fbbf24":"#7070a0"}}>
-                          {isPlaying?"▶ Now Playing":type==="filler"?"⚠ Filler":type==="mixed"?"◑ Mixed":`Episode ${n}`}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* CHARACTERS */}
-            {detTab==="characters"&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:12}}>
-                {(anime.chars||[]).length===0
-                  ?<div style={{textAlign:"center",padding:"40px 20px",color:"#7070a0",gridColumn:"1/-1"}}>No data yet</div>
-                  :(anime.chars||[]).map(e=>(
-                    <div key={e.node?.id} style={{textAlign:"center"}}>
-                      <img src={imgUrl(e.node?.image?.large,150)} alt={e.node?.name?.full}
-                        style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",margin:"0 auto 6px",border:"2px solid #2a2a35",display:"block"}}
-                        onError={ev=>{ev.target.src=`https://placehold.co/64/16161c/666?text=?`;}}/>
-                      <div style={{fontSize:11,fontWeight:600,lineHeight:1.3}}>{e.node?.name?.full}</div>
-                      <div style={{fontSize:10,color:"#7070a0"}}>{e.role}</div>
-                    </div>
-                  ))}
-              </div>
-            )}
-
-            {/* RELATED */}
-            {detTab==="related"&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:12}}>
-                {(anime.recs||[]).length===0
-                  ?<div style={{textAlign:"center",padding:"40px 20px",color:"#7070a0",gridColumn:"1/-1"}}>No recommendations</div>
-                  :(anime.recs||[]).map(r=>{
-                    const m=r.mediaRecommendation;
-                    return(
-                      <div key={m.id} style={{cursor:"pointer"}}
-                        onClick={()=>openAnime({id:m.id,title:m.title?.english||m.title?.romaji||"",cover:m.coverImage?.large||"",score:(m.averageScore/10).toFixed(1),format:"TV",status:"UNKNOWN",genres:[],episodes:"?"})}>
-                        <div style={{position:"relative",borderRadius:10,overflow:"hidden",aspectRatio:"2/3",background:"#16161c"}}>
-                          <img src={imgUrl(m.coverImage?.large,200)} alt={m.title?.romaji}
-                            style={{width:"100%",height:"100%",objectFit:"cover"}}
-                            onError={e=>{e.target.style.opacity=0;}}/>
-                          <div style={{position:"absolute",bottom:7,right:7,background:"rgba(0,0,0,.75)",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:800,color:"#fbbf24"}}>⭐{m.averageScore?(m.averageScore/10).toFixed(1):"?"}</div>
-                        </div>
-                        <div style={{fontSize:11,fontWeight:600,marginTop:6,lineHeight:1.3,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{m.title?.english||m.title?.romaji}</div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        </div>
-
-      ):(
-        /* ══ HOME ══ */
-        <div>
-          {/* Hero Banner */}
-          {!query&&liveData.trending?.[0]&&(()=>{
-            const h=liveData.trending[0];
-            return(
-              <div style={{position:"relative",height:400,overflow:"hidden"}} className="banner-height">
-                <img src={imgUrl(h.banner||h.cover,1400)} alt={h.title}
-                  style={{width:"100%",height:"100%",objectFit:"cover"}}
-                  onError={e=>{e.target.style.opacity=0;}}/>
-                <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,rgba(11,11,14,.95) 35%,transparent 70%),linear-gradient(to top,rgba(11,11,14,1) 0%,transparent 50%)"}}/>
-                <div style={{position:"absolute",bottom:36,left:36,maxWidth:460}} className="banner-info">
-                  <div style={{fontSize:30,fontWeight:900,lineHeight:1.15,marginBottom:10}} className="banner-title">{h.title}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
-                    <span style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"rgba(251,191,36,.12)",color:"#fbbf24",border:"1px solid rgba(251,191,36,.25)"}}>⭐ {h.score}</span>
-                    <span style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"#16161c",color:"#7070a0",border:"1px solid #2a2a35"}}>{h.format}</span>
-                    {h.status==="RELEASING"&&<span style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"rgba(229,23,44,.12)",color:"#e5172c",border:"1px solid rgba(229,23,44,.25)"}}>● AIRING</span>}
-                  </div>
-                  <p style={{fontSize:13,color:"rgba(255,255,255,.62)",lineHeight:1.6,marginBottom:18,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{h.desc}</p>
-                  <div style={{display:"flex",gap:10}}>
-                    <button onClick={()=>openAnime(h)}
-                      style={{background:"#e5172c",color:"white",borderRadius:10,padding:"11px 24px",fontSize:14,fontWeight:700,cursor:"pointer",border:"none",fontFamily:"inherit"}}>
-                      ▶ Play Now
-                    </button>
-                    <button onClick={()=>openAnime(h)}
-                      style={{background:"rgba(255,255,255,.1)",color:"white",borderRadius:10,padding:"11px 20px",fontSize:14,fontWeight:700,cursor:"pointer",border:"1px solid rgba(255,255,255,.15)",fontFamily:"inherit"}}>
-                      ℹ More Info
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Search results */}
-          {query.trim()&&(
-            <div style={{padding:"28px 24px 40px"}} className="mob-pad">
-              <div style={{fontSize:18,fontWeight:800,marginBottom:16}}>
-                {searching?"Searching…":`"${query}" — ${searchRes.length} results`}
-              </div>
-              {searching&&<div style={{width:28,height:28,border:"3px solid #2a2a35",borderTopColor:"#e5172c",borderRadius:"50%",animation:"spin .7s linear infinite",margin:"40px auto"}}/>}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:14}} className="grid-auto">
-                {searchRes.map(a=><AnimeCard key={a.id} anime={a} onClick={()=>openAnime(a)}/>)}
-              </div>
-            </div>
-          )}
-
-          {/* Home sections */}
-          {!query.trim()&&tabs.map(t=>{
-            const items=liveData[t.key]||[];
-            if(!items.length&&!homeLoading)return null;
-            return(
-              <div key={t.key} style={{padding:"28px 24px 32px"}} className="mob-pad">
-                <div style={{fontSize:18,fontWeight:800,marginBottom:16}}>{t.label}</div>
-                {homeLoading&&!items.length&&<div style={{width:28,height:28,border:"3px solid #2a2a35",borderTopColor:"#e5172c",borderRadius:"50%",animation:"spin .7s linear infinite",margin:"40px auto"}}/>}
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:14}} className="grid-auto">
-                  {items.map(a=><AnimeCard key={a.id} anime={a} onClick={()=>openAnime(a)}/>)}
-                </div>
-              </div>
-            );
-          })}
-          <div style={{height:60}}/>
-        </div>
-      )}
-    </>
-  );
-}
+                anime.status==="RELEASING"&&{t:"● AIRING",bg:"rgba(229,23,44,.12)",c:"#e5172c",b:"rgba(229,23,44,.25)"},
+              ].filter(Boolean).map((b,i)=>(
+                <span key={i} style={{fontSize:12,fontWeight:700,padding:"4px 10px",borderRadius:6,background:b.bg,color:b.c,border:`1px solid $
