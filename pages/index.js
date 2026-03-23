@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 
 const API = "https://consumet-api-fawn.vercel.app/anime/gogoanime";
-// Updated servers with better embed compatibility
 const SERVERS = [
   { id: 1, name: "Vidsrc", url: "https://vidsrc.to/embed/anime/" },
   { id: 2, name: "Gogo", url: "https://play.embtaku.pro/streaming.php?id=" },
-  { id: 3, name: "Alpha", url: "https://play.taku.pro/streaming.php?id=" },
-  { id: 4, name: "Vidlink", url: "https://vidlink.pro/anime/" }
+  { id: 3, name: "Vidlink", url: "https://vidlink.pro/anime/" }
 ];
 
 export default function App() {
@@ -43,58 +41,56 @@ export default function App() {
     if (d.episodes?.[0]) setActiveEp(d.episodes[0]);
   };
 
-  // Uses wsrv.nl proxy to fix broken images
   const Card = ({ a }) => (
     <div onClick={() => selectAnime(a)} style={{ cursor: 'pointer', textAlign: 'center' }}>
       <img 
-        src={`https://wsrv.nl/?url=${encodeURIComponent(a.image)}&w=200`} 
-        style={{ width: '100%', borderRadius: '8px', aspectRatio: '2/3', objectFit: 'cover', background: '#222' }} 
+        src={`https://wsrv.nl/?url=${encodeURIComponent(a.image)}&w=250&output=webp`} 
+        style={{ width: '100%', borderRadius: '10px', aspectRatio: '2/3', objectFit: 'cover', background: '#1a1a1a' }} 
       />
-      <p style={{ fontSize: '12px', marginTop: '5px', height: '3em', overflow: 'hidden' }}>{a.title}</p>
+      <p style={{ fontSize: '12px', marginTop: '8px', fontWeight: '600', height: '2.5em', overflow: 'hidden' }}>{a.title}</p>
     </div>
   );
 
   return (
-    <div style={{ backgroundColor: '#0b0b0b', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: 'sans-serif' }}>
+    <div style={{ backgroundColor: '#080808', color: 'white', minHeight: '100vh', padding: '20px', fontFamily: 'system-ui, sans-serif' }}>
       <Head><title>AniStream</title></Head>
       
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'center' }}>
-        <h2 style={{ color: '#e51e2a', margin: 0, cursor: 'pointer' }} onClick={() => setView('home')}>AniStream</h2>
-        <input placeholder="Search anime..." onChange={(e) => search(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#1a1a1a', color: 'white' }} />
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '25px', alignItems: 'center' }}>
+        <h2 style={{ color: '#ff1e30', margin: 0, cursor: 'pointer' }} onClick={() => setView('home')}>AniStream</h2>
+        <input placeholder="Search..." onChange={(e) => search(e.target.value)} style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #333', background: '#121212', color: 'white' }} />
       </div>
 
       {view === 'details' && selected && (
-        <div>
-          <button onClick={() => setView('home')} style={{ background: '#222', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', marginBottom: '15px', cursor: 'pointer' }}>← Back</button>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <button onClick={() => setView('home')} style={{ background: '#222', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', marginBottom: '20px', cursor: 'pointer' }}>← Back</button>
           
-          <div style={{ background: '#000', borderRadius: '12px', overflow: 'hidden', marginBottom: '15px', position: 'relative', paddingTop: '56.25%', border: '1px solid #333' }}>
+          <div style={{ background: '#000', borderRadius: '15px', overflow: 'hidden', marginBottom: '20px', position: 'relative', paddingTop: '56.25%', border: '1px solid #222' }}>
             <iframe 
-              src={activeSrv.id === 1 || activeSrv.id === 4 ? `${activeSrv.url}${selected.id}/${activeEp?.number}` : `${activeSrv.url}${activeEp?.id}`} 
+              src={activeSrv.id === 2 ? `${activeSrv.url}${activeEp?.id}` : `${activeSrv.url}${selected.id}/${activeEp?.number}`} 
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} 
               allowFullScreen 
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '5px' }}>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', overflowX: 'auto', paddingBottom: '10px' }}>
             {SERVERS.map(s => (
-              <button key={s.id} onClick={() => setActiveSrv(s)} style={{ background: activeSrv.id === s.id ? '#e51e2a' : '#222', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{s.name}</button>
+              <button key={s.id} onClick={() => setActiveSrv(s)} style={{ background: activeSrv.id === s.id ? '#ff1e30' : '#222', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{s.name}</button>
             ))}
           </div>
 
-          <h3 style={{ margin: '0 0 15px 0' }}>{selected.title}</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '10px' }}>
+          <h1 style={{ fontSize: '22px', marginBottom: '20px' }}>{selected.title}</h1>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))', gap: '12px' }}>
             {episodes.map(e => (
               <button 
                 key={e.id} 
                 onClick={() => setActiveEp(e)}
                 style={{ 
-                  padding: '12px 5px', 
-                  borderRadius: '6px', 
+                  padding: '15px 5px', 
+                  borderRadius: '8px', 
                   border: 'none', 
-                  // Yellow for filler, Red for active, Dark for canon
-                  background: activeEp?.id === e.id ? '#e51e2a' : (e.isFiller ? '#f1c40f' : '#1a1a1a'),
+                  background: activeEp?.id === e.id ? '#ff1e30' : (e.isFiller ? '#fbc02d' : '#1a1a1a'),
                   color: (e.isFiller && activeEp?.id !== e.id) ? '#000' : 'white',
-                  fontWeight: '800',
+                  fontWeight: 'bold',
                   cursor: 'pointer'
                 }}
               >
@@ -106,7 +102,7 @@ export default function App() {
       )}
 
       {(view === 'home' || view === 'search') && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '20px' }}>
           {(view === 'search' ? results : homeData).map(a => <Card key={a.id} a={a} />)}
         </div>
       )}
