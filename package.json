@@ -1,12 +1,87 @@
-// Add this helper function at the top of your component
-const proxy = (url) => `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=300&output=webp`;
+import React, { useState, useEffect } from 'react';
+import Head from 'next/head';
 
-// Then, update your Image tags like this:
-<img 
-  src={proxy(a.images.jpg.large_image_url)} 
-  style={{ width: '100%', aspectRatio: '2/3', borderRadius: '12px', objectFit: 'cover' }} 
-  alt="anime cover"
-/>
+const API = "https://api.jikan.moe/v4";
+// This proxy bypasses 403 errors and speeds up loading by using WebP
+const imgProxy = (url) => `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=400&output=webp`;
+
+export default function App() {
+  const [trending, setTrending] = useState([]);
+  const [popular, setPopular] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [searchRes, setSearchRes] = useState([]);
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState('home'); 
+  const [showFilter, setShowFilter] = useState(false);
+
+  useEffect(() => { 
+    // Fetching categories to match screenshot sections
+    fetch(`${API}/top/anime?filter=airing&limit=10`).then(r => r.json()).then(d => setTrending(d.data || []));
+    fetch(`${API}/top/anime?filter=bypopularity&limit=12`).then(r => r.json()).then(d => setPopular(d.data || []));
+    fetch(`${API}/top/anime?filter=favorite&limit=12`).then(r => r.json()).then(d => setFavorites(d.data || []));
+  }, []);
+
+  const handleSearch = async (val) => {
+    setQuery(val);
+    if (val.trim().length > 0) {
+      setView('search');
+      const r = await fetch(`${API}/anime?q=${val}&limit=20`);
+      const d = await r.json();
+      setSearchRes(d.data || []);
+    } else {
+      setView('home');
+    }
+  };
+
+  const SectionHead = ({ title }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0 12px' }}>
+      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{title}</h3>
+      <span style={{ color: '#ff1e30', fontSize: '13px' }}>See all</span>
+    </div>
+  );
+
+  const AnimeCard = ({ anime, horizontal = false }) => (
+    <div style={{ flex: '0 0 auto', width: horizontal ? '150px' : 'auto', position: 'relative' }}>
+      <img 
+        src={imgProxy(anime.images.jpg.large_image_url)} 
+        style={{ width: '100%', aspectRatio: '2/3', borderRadius: '12px', objectFit: 'cover' }} 
+        alt={anime.title}
+      />
+      <div style={{ position: 'absolute', top: '8px', left: '8px', background: 'white', color: 'black', fontSize: '10px', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' }}>
+        {anime.rating?.split(' ')[0] || 'PG-13'}
+      </div>
+      <div style={{ position: 'absolute', top: '8px', right: '8px', background: '#ff1e30', color: 'white', fontSize: '10px', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold' }}>HD</div>
+    </div>
+  );
+
+  return (
+    <div style={{ backgroundColor: '#0b0c0e', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif', paddingBottom: '90px' }}>
+      <Head><title>AniStream</title></Head>
+
+      {/* 1:1 Header */}
+      <div style={{ padding: '15px 20px', position: 'sticky', top: 0, background: '#0b0c0e', zIndex: 10, display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <h2 style={{ color: '#ff1e30', margin: 0, fontSize: '22px', fontWeight: '900' }} onClick={() => setView('home')}>AniStream</h2>
+        <div style={{ flex: 1 }}>
+          <input 
+            type="text" placeholder="Search anime..." value={query}
+            onChange={(e) => handleSearch(e.target.value)}
+            style={{ width: '100%', background: '#1c1d21', border: 'none', borderRadius: '10px', padding: '10px 15px', color: 'white' }}
+          />
+        </div>
+        <span style={{ fontSize: '20px' }}>❤️</span>
+      </div>
+
+      <div style={{ padding: '0 20px' }}>
+        {view === 'home' && (
+          <>
+            {/* Top Airing Horizontal List */}
+            <SectionHead title="Top Airing" />
+            <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none' }}>
+              {trending.map(a => <AnimeCard key={a.mal_id} anime={a} horizontal />)}
+            </div>
+
+            {/* Most Favorite Grid
+
 
 {
   "name": "anistream",
