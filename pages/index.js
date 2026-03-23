@@ -1,146 +1,104 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import Head from "next/head";
+import React, { useState, useEffect } from 'react';
+import Head from 'next/head';
 
-// --- Helpers ---
-function imgUrl(url) {
-  if (!url) return "https://placehold.co/400x600/16161c/666?text=No+Image";
-  // Uses a proxy to bypass hotlink protection from AniList/external sites
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=400&output=webp`;
-}
+const API = "https://consumet-api-fawn.vercel.app/anime/gogoanime";
+const SERVERS = [
+  { id: 1, name: "Gogo", url: "https://play.embtaku.pro/streaming.php?id=" },
+  { id: 2, name: "Alpha", url: "https://play.taku.pro/streaming.php?id=" },
+  { id: 3, name: "Beta", url: "https://play.embtaku.pro/streaming.php?id=" },
+  { id: 4, name: "Stream", url: "https://www.gogovideo.cc/streaming.php?id=" }
+];
 
-async function alFetch(query, variables = {}) {
-  const body = JSON.stringify({ query, variables });
-  const headers = { "Content-Type": "application/json", "Accept": "application/json" };
-  try {
-    const r = await fetch("https://graphql.anilist.co", { method: "POST", headers, body });
-    const j = await r.json();
-    return j.data;
-  } catch (e) {
-    console.error("AniList Error", e);
-    return null;
-  }
-}
-
-// --- Video embed system ---
-function buildEmbedUrls(id, malId, epNum, isDub) {
-  const sub = isDub ? "dub" : "sub";
-  const searchId = malId || id;
-  // Ordered by reliability
-  return [
-    `https://vidlink.pro/anime/${searchId}/${epNum}?primaryColor=e5172c`,
-    `https://vidsrc.cc/v2/embed/anime/${searchId}/${epNum}?translation=${sub}`,
-    `https://embed.su/embed/anime/${searchId}/${epNum}`,
-    `https://vidsrc.me/embed/anime?id=${searchId}&e=${epNum}`,
-    `https://2embed.skin/embed/anime/stream?id=${searchId}&e=${epNum}&s=${sub}`,
-  ];
-}
-
-// --- Queries ---
-const AL_FIELDS = `id idMal title{romaji english native} coverImage{extraLarge large color} bannerImage description averageScore episodes status seasonYear format studios(isMain:true){nodes{name}}`;
-const Q_HOME = `query{trending:Page(perPage:12){media(sort:TRENDING_DESC,type:ANIME,isAdult:false){${AL_FIELDS}}}popular:Page(perPage:12){media(sort:POPULARITY_DESC,type:ANIME,isAdult:false){${AL_FIELDS}}}}`;
-const Q_SEARCH = `query($q:String){Page(perPage:20){media(search:$q,type:ANIME,isAdult:false){${AL_FIELDS}}}}`;
-
-export default function Home() {
-  const [data, setData] = useState({ trending: [], popular: [] });
-  const [query, setQuery] = useState("");
+export default function App() {
+  const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [homeData, setHomeData] = useState([]);
+  const [view, setView] = useState('home'); 
   const [selected, setSelected] = useState(null);
-  const [playEp, setPlayEp] = useState(1);
-  const [isDub, setIsDub] = useState(false);
-  const [srvIdx, setSrvIdx] = useState(0);
+  const [episodes, setEpisodes] = useState([]);
+  const [activeEp, setActiveEp] = useState(null);
+  const [activeSrv, setActiveSrv] = useState(SERVERS[0]);
 
-  useEffect(() => {
-    alFetch(Q_HOME).then(d => d && setData({ trending: d.trending.media, popular: d.popular.media }));
-  }, []);
+  useEffect(() => { fetch(`${API}/top-airing`).then(r => r.json()).then(d => setHomeData(d.results || [])); }, []);
 
-  const search = async (val) => {
-    setQuery(val);
-    if (val.length > 2) {
-      const d = await alFetch(Q_SEARCH, { q: val });
-      if (d) setResults(d.Page.media);
-    } else {
-      setResults([]);
+  const search = async (q) => {
+    setQuery(q);
+    if (q.length > 2) {
+      const r = await fetch(`${API}/${q}`);
+      const d = await r.json();
+      setResults(d.results || []);
+      setView('search');
     }
   };
 
-  const currentUrls = selected ? buildEmbedUrls(selected.id, selected.idMal, playEp, isDub) : [];
+  const selectAnime = async (anime) => {
+    setSelected(anime);
+    setView('details');
+    const r = await fetch(`${API}/info/${anime.id}`);
+    const d = await r.json();
+    setEpisodes(d.episodes || []);
+    if (d.episodes?.[0]) setActiveEp(d.episodes[0]);
+  };
+
+  const Card = ({ a }) => (
+    <div onClick={() => selectAnime(a)} style={{ cursor: 'pointer', textAlign: 'center' }}>
+      <img src={a.image} style={{ width: '100%', borderRadius: '8px', aspectRatio: '2/3', objectFit: 'cover', backgroundColor: '#222' }} />
+      <p style={{ fontSize: '12px', marginTop: '5px', height: '3em', overflow: 'hidden' }}>{a.title}</p>
+    </div>
+  );
 
   return (
-    <div style={{ backgroundColor: '#0b0b0e', color: '#fff', minHeight: '100vh', fontFamily: 'sans-serif' }}>
+    <div style={{ backgroundColor: '#0b0b0b', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: 'sans-serif' }}>
       <Head><title>AniStream</title></Head>
       
-      {/* Header */}
-      <nav style={{ padding: '20px', borderBottom: '1px solid #222', display: 'flex', gap: '20px', alignItems: 'center' }}>
-        <h1 style={{ color: '#e5172c', margin: 0, cursor: 'pointer' }} onClick={() => {setSelected(null); setQuery("");}}>AniStream</h1>
-        <input 
-          style={{ background: '#16161c', border: '1px solid #333', color: '#fff', padding: '10px', borderRadius: '8px', flex: 1 }}
-          placeholder="Search for anime..."
-          value={query}
-          onChange={(e) => search(e.target.value)}
-        />
-      </nav>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <h2 style={{ color: '#e51e2a', margin: 0 }}>AniStream</h2>
+        <input placeholder="Search..." onChange={(e) => search(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '5px', border: 'none', background: '#222', color: 'white' }} />
+      </div>
 
-      <main style={{ padding: '20px' }}>
-        {!selected ? (
-          <div>
-            <h2>{query ? "Search Results" : "Trending Now"}</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px' }}>
-              {(query ? results : data.trending).map(anime => (
-                <div key={anime.id} onClick={() => setSelected(anime)} style={{ cursor: 'pointer' }}>
-                  <img src={imgUrl(anime.coverImage.extraLarge)} style={{ width: '100%', borderRadius: '8px', aspectRatio: '2/3', objectFit: 'cover' }} />
-                  <p style={{ fontSize: '14px', fontWeight: 'bold', marginTop: '8px' }}>{anime.title.english || anime.title.romaji}</p>
-                </div>
-              ))}
-            </div>
+      {view === 'details' && selected && (
+        <div>
+          <button onClick={() => setView('home')} style={{ background: '#333', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', marginBottom: '15px' }}>← Back</button>
+          <div style={{ background: '#000', borderRadius: '10px', overflow: 'hidden', marginBottom: '15px', position: 'relative', paddingTop: '56.25%' }}>
+            <iframe 
+              src={`${activeSrv.url}${activeEp?.id}`} 
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} 
+              allowFullScreen 
+            />
           </div>
-        ) : (
-          <div>
-            <button onClick={() => setSelected(null)} style={{ background: '#222', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '5px', marginBottom: '20px', cursor: 'pointer' }}>← Back</button>
-            
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '30px' }}>
-              <div style={{ flex: '1 1 600px' }}>
-                <div style={{ position: 'relative', paddingTop: '56.25%', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
-                  <iframe 
-                    src={currentUrls[srvIdx]} 
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-                    allowFullScreen
-                    referrerPolicy="no-referrer"
-                    sandbox="allow-forms allow-pointer-lock allow-same-origin allow-scripts allow-top-navigation"
-                  />
-                </div>
-                
-                <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
-                  {currentUrls.map((_, i) => (
-                    <button key={i} onClick={() => setSrvIdx(i)} style={{ padding: '8px 15px', borderRadius: '5px', border: 'none', cursor: 'pointer', background: srvIdx === i ? '#e5172c' : '#222', color: '#fff' }}>
-                      Server {i + 1}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ flex: '1 1 300px' }}>
-                <h2 style={{ margin: '0 0 10px 0' }}>{selected.title.english || selected.title.romaji}</h2>
-                <p style={{ color: '#aaa', fontSize: '14px' }}>Episode {playEp}</p>
-                
-                <div style={{ display: 'flex', gap: '10px', margin: '20px 0' }}>
-                   <button onClick={() => setIsDub(false)} style={{ flex: 1, padding: '10px', borderRadius: '5px', border: 'none', background: !isDub ? '#e5172c' : '#222', color: '#fff' }}>SUB</button>
-                   <button onClick={() => setIsDub(true)} style={{ flex: 1, padding: '10px', borderRadius: '5px', border: 'none', background: isDub ? '#e5172c' : '#222', color: '#fff' }}>DUB</button>
-                </div>
-
-                <div style={{ height: '300px', overflowY: 'auto', background: '#16161c', padding: '10px', borderRadius: '8px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-                    {[...Array(selected.episodes || 12)].map((_, i) => (
-                      <button key={i} onClick={() => setPlayEp(i + 1)} style={{ padding: '10px', border: 'none', borderRadius: '4px', background: playEp === i + 1 ? '#e5172c' : '#333', color: '#fff', cursor: 'pointer' }}>
-                        {i + 1}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div style={{ display: 'flex', gap: '5px', overflowX: 'auto', marginBottom: '15px' }}>
+            {SERVERS.map(s => (
+              <button key={s.id} onClick={() => setActiveSrv(s)} style={{ background: activeSrv.id === s.id ? '#e51e2a' : '#222', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '12px' }}>{s.name}</button>
+            ))}
           </div>
-        )}
-      </main>
+          <h3 style={{ margin: '10px 0' }}>{selected.title}</h3>
+          <p style={{ fontSize: '14px', color: '#aaa' }}>Episodes (Yellow = Filler):</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '8px' }}>
+            {episodes.map(e => (
+              <button 
+                key={e.id} 
+                onClick={() => setActiveEp(e)}
+                style={{ 
+                  padding: '10px', 
+                  borderRadius: '5px', 
+                  border: 'none', 
+                  background: activeEp?.id === e.id ? '#e51e2a' : (e.isFiller ? '#f1c40f' : '#222'),
+                  color: (e.isFiller && activeEp?.id !== e.id) ? '#000' : 'white',
+                  fontWeight: 'bold'
+                }}
+              >
+                {e.number}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(view === 'home' || view === 'search') && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '15px' }}>
+          {(view === 'search' ? results : homeData).map(a => <Card key={a.id} a={a} />)}
+        </div>
+      )}
     </div>
   );
 }
