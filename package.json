@@ -1,3 +1,13 @@
+// Add this helper function at the top of your component
+const proxy = (url) => `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=300&output=webp`;
+
+// Then, update your Image tags like this:
+<img 
+  src={proxy(a.images.jpg.large_image_url)} 
+  style={{ width: '100%', aspectRatio: '2/3', borderRadius: '12px', objectFit: 'cover' }} 
+  alt="anime cover"
+/>
+
 {
   "name": "anistream",
   "version": "0.1.0",
