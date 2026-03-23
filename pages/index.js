@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 
 const API = "https://consumet-api-fawn.vercel.app/anime/gogoanime";
+// Updated servers with better embed compatibility
 const SERVERS = [
-  { id: 1, name: "Gogo", url: "https://play.embtaku.pro/streaming.php?id=" },
-  { id: 2, name: "Alpha", url: "https://play.taku.pro/streaming.php?id=" },
-  { id: 3, name: "Beta", url: "https://play.embtaku.pro/streaming.php?id=" },
-  { id: 4, name: "Stream", url: "https://www.gogovideo.cc/streaming.php?id=" }
+  { id: 1, name: "Vidsrc", url: "https://vidsrc.to/embed/anime/" },
+  { id: 2, name: "Gogo", url: "https://play.embtaku.pro/streaming.php?id=" },
+  { id: 3, name: "Alpha", url: "https://play.taku.pro/streaming.php?id=" },
+  { id: 4, name: "Vidlink", url: "https://vidlink.pro/anime/" }
 ];
 
 export default function App() {
@@ -19,7 +20,9 @@ export default function App() {
   const [activeEp, setActiveEp] = useState(null);
   const [activeSrv, setActiveSrv] = useState(SERVERS[0]);
 
-  useEffect(() => { fetch(`${API}/top-airing`).then(r => r.json()).then(d => setHomeData(d.results || [])); }, []);
+  useEffect(() => { 
+    fetch(`${API}/top-airing`).then(r => r.json()).then(d => setHomeData(d.results || [])); 
+  }, []);
 
   const search = async (q) => {
     setQuery(q);
@@ -40,9 +43,13 @@ export default function App() {
     if (d.episodes?.[0]) setActiveEp(d.episodes[0]);
   };
 
+  // Uses wsrv.nl proxy to fix broken images
   const Card = ({ a }) => (
     <div onClick={() => selectAnime(a)} style={{ cursor: 'pointer', textAlign: 'center' }}>
-      <img src={a.image} style={{ width: '100%', borderRadius: '8px', aspectRatio: '2/3', objectFit: 'cover', backgroundColor: '#222' }} />
+      <img 
+        src={`https://wsrv.nl/?url=${encodeURIComponent(a.image)}&w=200`} 
+        style={{ width: '100%', borderRadius: '8px', aspectRatio: '2/3', objectFit: 'cover', background: '#222' }} 
+      />
       <p style={{ fontSize: '12px', marginTop: '5px', height: '3em', overflow: 'hidden' }}>{a.title}</p>
     </div>
   );
@@ -51,40 +58,44 @@ export default function App() {
     <div style={{ backgroundColor: '#0b0b0b', color: 'white', minHeight: '100vh', padding: '15px', fontFamily: 'sans-serif' }}>
       <Head><title>AniStream</title></Head>
       
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <h2 style={{ color: '#e51e2a', margin: 0 }}>AniStream</h2>
-        <input placeholder="Search..." onChange={(e) => search(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '5px', border: 'none', background: '#222', color: 'white' }} />
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'center' }}>
+        <h2 style={{ color: '#e51e2a', margin: 0, cursor: 'pointer' }} onClick={() => setView('home')}>AniStream</h2>
+        <input placeholder="Search anime..." onChange={(e) => search(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#1a1a1a', color: 'white' }} />
       </div>
 
       {view === 'details' && selected && (
         <div>
-          <button onClick={() => setView('home')} style={{ background: '#333', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', marginBottom: '15px' }}>← Back</button>
-          <div style={{ background: '#000', borderRadius: '10px', overflow: 'hidden', marginBottom: '15px', position: 'relative', paddingTop: '56.25%' }}>
+          <button onClick={() => setView('home')} style={{ background: '#222', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', marginBottom: '15px', cursor: 'pointer' }}>← Back</button>
+          
+          <div style={{ background: '#000', borderRadius: '12px', overflow: 'hidden', marginBottom: '15px', position: 'relative', paddingTop: '56.25%', border: '1px solid #333' }}>
             <iframe 
-              src={`${activeSrv.url}${activeEp?.id}`} 
+              src={activeSrv.id === 1 || activeSrv.id === 4 ? `${activeSrv.url}${selected.id}/${activeEp?.number}` : `${activeSrv.url}${activeEp?.id}`} 
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} 
               allowFullScreen 
             />
           </div>
-          <div style={{ display: 'flex', gap: '5px', overflowX: 'auto', marginBottom: '15px' }}>
+
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '20px', paddingBottom: '5px' }}>
             {SERVERS.map(s => (
-              <button key={s.id} onClick={() => setActiveSrv(s)} style={{ background: activeSrv.id === s.id ? '#e51e2a' : '#222', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '12px' }}>{s.name}</button>
+              <button key={s.id} onClick={() => setActiveSrv(s)} style={{ background: activeSrv.id === s.id ? '#e51e2a' : '#222', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{s.name}</button>
             ))}
           </div>
-          <h3 style={{ margin: '10px 0' }}>{selected.title}</h3>
-          <p style={{ fontSize: '14px', color: '#aaa' }}>Episodes (Yellow = Filler):</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '8px' }}>
+
+          <h3 style={{ margin: '0 0 15px 0' }}>{selected.title}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '10px' }}>
             {episodes.map(e => (
               <button 
                 key={e.id} 
                 onClick={() => setActiveEp(e)}
                 style={{ 
-                  padding: '10px', 
-                  borderRadius: '5px', 
+                  padding: '12px 5px', 
+                  borderRadius: '6px', 
                   border: 'none', 
-                  background: activeEp?.id === e.id ? '#e51e2a' : (e.isFiller ? '#f1c40f' : '#222'),
+                  // Yellow for filler, Red for active, Dark for canon
+                  background: activeEp?.id === e.id ? '#e51e2a' : (e.isFiller ? '#f1c40f' : '#1a1a1a'),
                   color: (e.isFiller && activeEp?.id !== e.id) ? '#000' : 'white',
-                  fontWeight: 'bold'
+                  fontWeight: '800',
+                  cursor: 'pointer'
                 }}
               >
                 {e.number}
@@ -95,7 +106,7 @@ export default function App() {
       )}
 
       {(view === 'home' || view === 'search') && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '20px' }}>
           {(view === 'search' ? results : homeData).map(a => <Card key={a.id} a={a} />)}
         </div>
       )}
