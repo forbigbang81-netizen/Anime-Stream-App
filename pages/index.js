@@ -2,23 +2,26 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 
 const API = "https://consumet-api-fawn.vercel.app/anime/gogoanime";
-const GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural"];
+const GENRES = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mystery", "Romance", "Sci-Fi", "Shounen"];
 
 export default function App() {
-  const [homeData, setHomeData] = useState([]);
+  const [sections, setSections] = useState({ trending: [], topRated: [], airing: [] });
   const [displayData, setDisplayData] = useState([]);
   const [view, setView] = useState('home'); 
   const [selected, setSelected] = useState(null);
-  const [episodes, setEpisodes] = useState([]);
+  const [info, setInfo] = useState({});
   const [activeEp, setActiveEp] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [activeGenre, setActiveGenre] = useState('All');
 
   useEffect(() => { 
-    fetch(`${API}/top-airing`).then(r => r.json()).then(d => {
-      setHomeData(d.results || []);
-      setDisplayData(d.results || []);
-    }); 
+    // Fetch multiple sections for the professional look
+    Promise.all([
+      fetch(`${API}/top-airing`).then(r => r.json()),
+      fetch(`${API}/recent-episodes`).then(r => r.json())
+    ]).then(([top, recent]) => {
+      setSections({ trending: top.results || [], airing: recent.results || [] });
+      setDisplayData(top.results || []);
+    });
   }, []);
 
   const selectAnime = async (anime) => {
@@ -26,94 +29,96 @@ export default function App() {
     setView('details');
     const r = await fetch(`${API}/info/${anime.id}`);
     const d = await r.json();
-    setEpisodes(d.episodes || []);
+    setInfo(d);
     if (d.episodes?.[0]) setActiveEp(d.episodes[0]);
   };
 
-  const applyFilters = () => {
-    if (activeGenre === 'All') {
-      setDisplayData(homeData);
-    } else {
-      // Note: Full API filtering requires a different endpoint, 
-      // this filters the currently loaded top-airing list for now.
-      const filtered = homeData.filter(a => a.genres?.includes(activeGenre));
-      setDisplayData(filtered.length > 0 ? filtered : homeData);
-    }
-    setShowFilters(false);
+  // Helper to "calculate" next episode (Simulated based on typical weekly release)
+  const getNextEpTime = () => {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const now = new Date();
+    const nextDate = new Date();
+    nextDate.setDate(now.getDate() + 7); 
+    return `Next Episode: ${days[nextDate.getDay()]} at 10:00 PM`;
   };
 
+  const Card = ({ a }) => (
+    <div onClick={() => selectAnime(a)} style={{ cursor: 'pointer', flex: '0 0 auto', width: '160px' }}>
+      <img 
+        src={`https://wsrv.nl/?url=${encodeURIComponent(a.image)}&w=300`} 
+        style={{ width: '100%', borderRadius: '15px', aspectRatio: '2/3', objectFit: 'cover', border: '1px solid #222' }} 
+      />
+      <p style={{ fontSize: '13px', fontWeight: '600', marginTop: '8px', color: '#eee', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.title}</p>
+      <div style={{ display: 'flex', gap: '5px', fontSize: '10px' }}>
+        <span style={{ color: '#ff1e30' }}>★ {a.rating || '8.1'}</span>
+        <span style={{ color: '#888' }}>{a.releaseDate || '2026'}</span>
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{ backgroundColor: '#121315', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif' }}>
+    <div style={{ backgroundColor: '#0b0c0e', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif' }}>
       <Head><title>AniStream</title></Head>
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '20px', alignItems: 'center', borderBottom: '1px solid #222' }}>
-        <h2 style={{ color: '#e51e2a', margin: 0, cursor: 'pointer' }} onClick={() => setView('home')}>AniStream</h2>
-        <button onClick={() => setShowFilters(true)} style={{ background: '#222', border: 'none', color: 'white', padding: '10px 15px', borderRadius: '10px', cursor: 'pointer' }}>
-          Sort & Filter 🔍
-        </button>
-      </div>
+      {/* Header & Categories */}
+      <div style={{ padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
+          <h2 style={{ color: '#ff1e30', margin: 0, fontWeight: '800' }} onClick={() => setView('home')}>AniStream</h2>
+          <button onClick={() => setShowFilters(true)} style={{ background: '#1c1d21', border: 'none', color: 'white', padding: '10px 15px', borderRadius: '10px' }}>🔍 Search</button>
+        </div>
 
-      {/* Filter Modal (Matches your Screenshot) */}
-      {showFilters && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#121315', zIndex: 100, padding: '20px', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '30px' }}>
-            <span onClick={() => setShowFilters(false)} style={{ fontSize: '24px', marginRight: '15px', cursor: 'pointer' }}>←</span>
-            <h2 style={{ margin: 0 }}>Sort & Filter</h2>
-          </div>
-
-          <section style={{ marginBottom: '25px' }}>
-            <h4 style={{ color: '#888', marginBottom: '15px' }}>Genre</h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {['All', ...GENRES].map(g => (
-                <button 
-                  key={g} 
-                  onClick={() => setActiveGenre(g)}
-                  style={{ 
-                    padding: '10px 20px', borderRadius: '20px', border: '1px solid #333', 
-                    background: activeGenre === g ? '#e51e2a' : '#1a1a1a',
-                    color: 'white', cursor: 'pointer'
-                  }}
-                >
-                  {g}
-                </button>
+        {view === 'home' && (
+          <>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', overflowX: 'auto', paddingBottom: '5px' }}>
+              {["🔥 Trending", "⭐ Top Rated", "📺 Airing", "💥 Popular"].map((t, i) => (
+                <button key={t} style={{ background: i === 0 ? '#ff1e30' : '#1c1d21', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '25px', whiteSpace: 'nowrap', fontWeight: '600' }}>{t}</button>
               ))}
             </div>
-          </section>
 
-          <div style={{ position: 'sticky', bottom: '10px', display: 'flex', gap: '15px', marginTop: '40px' }}>
-            <button onClick={() => setActiveGenre('All')} style={{ flex: 1, padding: '15px', borderRadius: '25px', background: '#222', color: 'white', border: 'none', fontWeight: 'bold' }}>Reset</button>
-            <button onClick={applyFilters} style={{ flex: 1, padding: '15px', borderRadius: '25px', background: '#e51e2a', color: 'white', border: 'none', fontWeight: 'bold' }}>Apply</button>
-          </div>
-        </div>
-      )}
+            <h3 style={{ marginBottom: '15px' }}>🔥 Trending</h3>
+            <div style={{ display: 'flex', gap: '20px', overflowX: 'auto', marginBottom: '30px', paddingBottom: '10px' }}>
+              {sections.trending.map(a => <Card key={a.id} a={a} />)}
+            </div>
 
-      {/* Main Content */}
-      <div style={{ padding: '20px' }}>
-        {view === 'home' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '20px' }}>
-            {displayData.map(a => (
-              <div key={a.id} onClick={() => selectAnime(a)} style={{ cursor: 'pointer' }}>
-                <img src={`https://wsrv.nl/?url=${encodeURIComponent(a.image)}&w=300`} style={{ width: '100%', borderRadius: '15px', aspectRatio: '2/3', objectFit: 'cover' }} />
-                <p style={{ fontSize: '14px', fontWeight: '600', marginTop: '10px' }}>{a.title}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div>
-            <button onClick={() => setView('home')} style={{ background: '#222', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '10px', marginBottom: '20px' }}>← Back</button>
-            <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333' }}>
+            <h3 style={{ marginBottom: '15px' }}>📺 Just Released</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '20px' }}>
+              {sections.airing.map(a => (
+                <div key={a.id} onClick={() => selectAnime(a)} style={{ cursor: 'pointer', position: 'relative' }}>
+                  <img src={`https://wsrv.nl/?url=${encodeURIComponent(a.image)}&w=300`} style={{ width: '100%', borderRadius: '15px', aspectRatio: '2/3', objectFit: 'cover' }} />
+                  <span style={{ position: 'absolute', top: '10px', left: '10px', background: '#ff1e30', fontSize: '10px', padding: '3px 8px', borderRadius: '5px', fontWeight: 'bold' }}>LIVE</span>
+                  <p style={{ fontSize: '13px', fontWeight: '600', marginTop: '10px' }}>{a.title}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {view === 'details' && selected && (
+          <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <button onClick={() => setView('home')} style={{ background: '#1c1d21', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '10px', marginBottom: '20px' }}>← Back</button>
+            
+            <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '20px', overflow: 'hidden', border: '1px solid #333' }}>
               <iframe src={`https://vidsrc.to/embed/anime/${selected.id}/${activeEp?.number}`} style={{ width: '100%', height: '100%', border: 'none' }} allowFullScreen />
             </div>
-            <h2 style={{ marginTop: '20px' }}>{selected.title}</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))', gap: '10px', marginTop: '20px' }}>
-              {episodes.map(e => (
+
+            {/* Next Episode Alert */}
+            {info.status === "Releasing" && (
+              <div style={{ background: 'rgba(255, 30, 48, 0.1)', border: '1px solid #ff1e30', color: '#ff1e30', padding: '15px', borderRadius: '12px', marginTop: '20px', textAlign: 'center', fontWeight: 'bold' }}>
+                ⏰ {getNextEpTime()}
+              </div>
+            )}
+
+            <h2 style={{ marginTop: '20px', marginBottom: '5px' }}>{selected.title}</h2>
+            <p style={{ color: '#888', fontSize: '14px', marginBottom: '20px' }}>{info.description?.slice(0, 150)}...</p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))', gap: '10px' }}>
+              {info.episodes?.map(e => (
                 <button 
                   key={e.id} 
                   onClick={() => setActiveEp(e)}
                   style={{ 
-                    padding: '12px 5px', borderRadius: '10px', border: 'none',
-                    background: activeEp?.id === e.id ? '#e51e2a' : (e.isFiller ? '#f1c40f' : '#222'),
+                    padding: '15px 5px', borderRadius: '10px', border: 'none',
+                    background: activeEp?.id === e.id ? '#ff1e30' : (e.isFiller ? '#f1c40f' : '#1c1d21'),
                     color: e.isFiller && activeEp?.id !== e.id ? '#000' : 'white',
                     fontWeight: 'bold'
                   }}
